@@ -31,4 +31,4 @@ jobs:
           FYERS_CLIENT_ID: ${{ secrets.FYERS_CLIENT_ID }}
           FYERS_PIN: ${{ secrets.FYERS_PIN }}
           FYERS_TOTP_SECRET: ${{ secrets.FYERS_TOTP_SECRET }}
-        run: python agent/pre_market_scan.py
+        run: python agent/pre_market_scan.py --run-now

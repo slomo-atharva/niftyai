@@ -25,7 +25,7 @@ import requests
 from bs4 import BeautifulSoup
 import feedparser
 from dotenv import load_dotenv
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+# transformers imports moved inside get_finbert_pipeline to make them lazy
 from supabase import create_client, Client
 
 # ---------------------------------------------------------------------------
@@ -98,6 +98,7 @@ def get_finbert_pipeline():
     global _finbert_pipeline
     if _finbert_pipeline is None:
         logger.info("Loading ProsusAI/finbert model – this may take a moment ...")
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
         tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
         model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
         _finbert_pipeline = pipeline(

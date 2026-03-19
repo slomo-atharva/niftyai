@@ -7,3 +7,7 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: SUPABASE_URL
+        value: https://sboetlpdyesnsarjbger.supabase.co
+      - key: SUPABASE_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNib2V0bHBkeWVzbnNhcmpiZ2VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4OTY2NzcsImV4cCI6MjA4OTQ3MjY3N30.SmfQKWgK4J375u7542vZF43e11yI6tQzah2JLYqk0pk

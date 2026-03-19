@@ -2,7 +2,6 @@ import os
 import sys
 from datetime import datetime, timezone
 from fastapi import FastAPI, BackgroundTasks, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import subprocess
 
@@ -12,6 +11,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agent.news_scraper import get_supabase_client
 
 app = FastAPI(title="NiftyAI Trading Agent API")
+
+from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,

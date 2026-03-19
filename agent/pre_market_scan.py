@@ -228,6 +228,72 @@ def score_nifty_500(per_stock_sentiment: dict) -> list:
     logger.info(f"Top 20 stocks identified: {[x['symbol'] for x in top_20]}")
     return top_20
 
+def generate_holiday_watchlist(top_20: list):
+    """Step 4b: Generate a watchlist for the next session on holidays"""
+    logger.info("Generating next session watchlist for holiday...")
+    watchlist = []
+    try:
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        prompt = (
+            "Market is closed today. Analyse these stocks and "
+            "give me a watchlist of best 5 stocks to watch when "
+            "market opens next. For each give: symbol, why to "
+            "watch, key price levels, risk factors. "
+            "Tag each as INTRADAY or SWING opportunity. "
+            "Return JSON only.\n\n"
+            f"Top 20 Stocks: {json.dumps(top_20)}\n"
+        )
+        
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a professional NSE/BSE analyst. Return only a JSON array of objects with keys: symbol, reason, key_levels, risk_factors, opportunity_type."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=2000
+        )
+        
+        text_resp = response.choices[0].message.content.strip()
+        parsed = json.loads(text_resp)
+        
+        # Expecting {"watchlist": [...]} or just [...]
+        if isinstance(parsed, dict):
+            for key, val in parsed.items():
+                if isinstance(val, list):
+                    watchlist = val
+                    break
+        elif isinstance(parsed, list):
+            watchlist = parsed
+            
+        if watchlist:
+            supabase = get_supabase_client()
+            now = datetime.now(timezone.utc).isoformat()
+            
+            # Format according to our table schema
+            to_insert = []
+            for item in watchlist[:5]: # Ensure max 5 as requested
+                to_insert.append({
+                    "symbol": item.get('symbol'),
+                    "reason": item.get('reason'),
+                    "key_levels": item.get('key_levels'),
+                    "risk_factors": item.get('risk_factors'),
+                    "opportunity_type": item.get('opportunity_type'),
+                    "created_at": now
+                })
+            
+            if to_insert:
+                supabase.table('watchlist').insert(to_insert).execute()
+                logger.info(f"Successfully saved {len(to_insert)} stocks to holiday watchlist.")
+            
+    except Exception as e:
+        msg = f"Error generating holiday watchlist: {e}"
+        logger.error(msg)
+        log_error_to_db("generate_holiday_watchlist", msg)
+    
+    return watchlist
+
 def query_openai(top_20: list, market_context: dict) -> list:
     """Step 4: Send top 20 to OpenAI API"""
     logger.info("Querying OpenAI API...")
@@ -243,7 +309,7 @@ def query_openai(top_20: list, market_context: dict) -> list:
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are an expert NSE/BSE trader. Select maximum 6 high conviction trades from this list. For each trade return JSON with these fields: symbol, signal (BUY or SELL), entry, sl, t1, t2, t3, rr_ratio, confidence, reasoning. Apply these rules: minimum R:R 1:2, no trades if VIX above 20, no BUY trades if SGX Nifty below -1%. Return JSON array only, no other text."},
+                {"role": "system", "content": "You are an expert NSE/BSE trader. Select maximum 6 high conviction trades from this list. For each trade return JSON with these fields: symbol, signal (BUY or SELL), entry, sl, t1, t2, t3, rr_ratio, confidence, reasoning, trade_type (INTRADAY or SWING). Apply these rules: minimum R:R 1:2, no trades if VIX above 20, no BUY trades if SGX Nifty below -1%. For SWING trades (3-7 days holding), include a 'holding_period' field. Return JSON array only, no other text."},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"},
@@ -399,21 +465,24 @@ def run_scan():
     
     # Step 1: Check holidays
     is_holiday, reason = is_market_holiday_or_weekend()
+    
     if is_holiday:
         next_day = get_next_trading_day()
-        msg = "Today is an NSE market holiday. Agent going back to sleep."
-        if reason == "WEEKEND":
-            msg = "Today is a weekend. Agent going back to sleep."
-            
-        logger.info(msg)
-        logger.info(f"Next trading day will be: {next_day}")
+        logger.info(f"Market closed due to {reason}. Generating Next Session Watchlist...")
+        
+        # Still run the analysis path for watchlist
+        per_stock_sentiment = run_news_scraper()
+        top_20 = score_nifty_500(per_stock_sentiment)
+        
+        # Generate the special watchlist
+        generate_holiday_watchlist(top_20)
         
         # Save this status to Supabase holiday_logs and market_context
         try:
             supabase = get_supabase_client()
             now = datetime.now(timezone.utc).isoformat()
             supabase.table('holiday_logs').insert({
-                "status": "SLEEP",
+                "status": "WATCHLIST_GENERATED",
                 "reason": reason,
                 "created_at": now
             }).execute()
@@ -421,20 +490,20 @@ def run_scan():
             # Unified status in market_context for frontend
             supabase.table('market_context').insert({
                 "context_data": {
-                    "scan_type": "HOLIDAY",
+                    "scan_type": "HOLIDAY_WATCHLIST",
                     "reason": reason,
-                    "stocks_scanned": 0,
+                    "stocks_scanned": len(KNOWN_SYMBOLS),
                     "trades_staged": 0,
                     "trades_killed": 0
                 },
                 "created_at": now
             }).execute()
             
-            logger.info(f"Successfully logged sleep status for {reason}")
+            logger.info(f"Successfully logged holiday watchlist status for {reason}")
         except Exception as e:
-            logger.error(f"Failed to log sleep status to DB: {e}")
+            logger.error(f"Failed to log holiday status to DB: {e}")
             
-        logger.info("=== PRE-MARKET SCAN COMPLETE ===")
+        logger.info("=== PRE-MARKET SCAN COMPLETE (HOLIDAY) ===")
         return
     
     context = fetch_market_context()

@@ -1,6 +1,7 @@
 import StockAI from './components/StockAI'
 import TradeTracker from './components/TradeTracker'
 import PreMarketAgent from './components/PreMarketAgent'
+import NextSessionWatchlist from './components/NextSessionWatchlist'
 import { Activity } from 'lucide-react'
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
 
           {/* Right Column: Live Trades (Span 2) */}
           <div className="lg:col-span-2 space-y-6">
+            <NextSessionWatchlist />
             <StockAI />
           </div>
         </div>

@@ -216,8 +216,10 @@ def train_and_evaluate():
     logger.info(f"Test Precision: {prec:.4f}")
     logger.info(f"Test Recall:    {rec:.4f}")
     
-    os.makedirs("/Users/apple/Downloads/nifty stocks/models/saved", exist_ok=True)
-    save_path = "/Users/apple/Downloads/nifty stocks/models/saved/xgboost_nifty.pkl"
+    current_file_path = os.path.dirname(os.path.abspath(__file__))
+    save_dir = os.path.join(current_file_path, "saved")
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, "xgboost_nifty.pkl")
     
     if acc >= 0.62:
         logger.info("Accuracy >= 62%. Saving model...")

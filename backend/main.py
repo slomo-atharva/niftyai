@@ -141,6 +141,17 @@ async def run_agent(background_tasks: BackgroundTasks):
     background_tasks.add_task(task)
     return {"status": "Agent execution started"}
 
+@app.get("/watchlist")
+async def get_watchlist():
+    """Returns the latest holiday/weekend watchlist from Supabase"""
+    try:
+        supabase = get_db()
+        # Fetch the latest 5 records from watchlist table
+        response = supabase.table('watchlist').select('*').order('created_at', desc=True).limit(5).execute()
+        return {"watchlist": response.data}
+    except Exception as e:
+        return handle_db_error(e, {"watchlist": []})
+
 if __name__ == "__main__":
     import uvicorn
     import os

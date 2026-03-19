@@ -18,7 +18,10 @@ def get_xgboost_scores(symbols):
     df = engineer_features(df)
     
     # load model
-    model_data = joblib.load("/Users/apple/Downloads/nifty stocks/models/saved/xgboost_nifty.pkl")
+    current_file_path = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(current_file_path)
+    model_path = os.path.join(root_dir, "models", "saved", "xgboost_nifty.pkl")
+    model_data = joblib.load(model_path)
     model = model_data['model']
     features = model_data['features']
     

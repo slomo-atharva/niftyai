@@ -21,3 +21,4 @@ uvicorn[standard]
 xgboost
 yfinance
 httpx
+transformers

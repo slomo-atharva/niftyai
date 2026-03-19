@@ -243,7 +243,8 @@ def run_v9():
     logger.info(f"FINAL TEST ACCURACY: {f_acc:.4f}")
     
     # Save Logic: Always save, but add confidence_weight if < 60%
-    save_path = "/Users/apple/Downloads/nifty stocks/models/saved/lstm_model.pth"
+    current_file_path = os.path.dirname(os.path.abspath(__file__))
+    save_path = os.path.join(current_file_path, "saved", "lstm_model.pth")
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     
     confidence_weight = 1.0 if f_acc >= TARGET_ACCURACY else 0.6

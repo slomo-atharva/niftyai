@@ -22,3 +22,4 @@ xgboost
 yfinance
 httpx
 transformers
+SQLAlchemy

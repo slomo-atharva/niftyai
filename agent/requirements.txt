@@ -11,3 +11,7 @@ supabase
 python-dotenv
 openai
 apscheduler
+lxml
+feedparser
+fyers-apiv3
+pyotp

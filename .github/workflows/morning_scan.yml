@@ -9,12 +9,16 @@ jobs:
   run-agent:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip' # caching pip dependencies
+          cache-dependency-path: 'agent/requirements.txt'
       - name: Install dependencies
-        run: pip install -r agent/requirements.txt
+        run: |
+          pip install --upgrade pip
+          pip install -r agent/requirements.txt
       - name: Run pre-market scan
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

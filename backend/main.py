@@ -4,11 +4,22 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 import subprocess
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
-# Add parent directory to path to allow importing local modules
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+load_dotenv()
 
-from agent.news_scraper import get_supabase_client
+# ---------------------------------------------------------------------------
+# Lightweight Supabase client — does NOT import the heavy agent/news_scraper
+# (which transitively loads PyTorch, FinBERT, Transformers, etc.)
+# ---------------------------------------------------------------------------
+def get_supabase_client() -> Client:
+    """Initialise and return a Supabase client from environment variables."""
+    url = os.getenv("SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_KEY", "")
+    if not url or not key:
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set as environment variables")
+    return create_client(url, key)
 
 app = FastAPI(title="NiftyAI Trading Agent API")
 

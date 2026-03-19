@@ -1,0 +1,13 @@
+xgboost
+torch
+transformers
+scikit-learn
+pandas
+yfinance
+pandas-market-calendars
+beautifulsoup4
+requests
+supabase
+python-dotenv
+openai
+apscheduler

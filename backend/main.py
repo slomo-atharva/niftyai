@@ -119,3 +119,9 @@ async def run_agent(background_tasks: BackgroundTasks):
     
     background_tasks.add_task(task)
     return {"status": "Agent execution started"}
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

@@ -328,7 +328,7 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
             
     return approved, killed
 
-def save_to_database(approved: list, killed: list, context: dict):
+def save_to_database(approved: list, killed: list, context: dict, stocks_scanned: int):
     """Step 6: Save to database"""
     logger.info("Saving results to database...")
     try:
@@ -354,9 +354,15 @@ def save_to_database(approved: list, killed: list, context: dict):
             supabase.table('trades').insert(all_trades).execute()
             logger.info("Successfully saved trades to Supabase.")
             
-        # Also saving raw market_context if requested
+        # Also saving raw market_context with summary stats
         supabase.table('market_context').insert({
-            "context_data": context,
+            "context_data": {
+                **context,
+                "stocks_scanned": stocks_scanned,
+                "trades_staged": len(approved),
+                "trades_killed": len(killed),
+                "scan_type": "LIVE"
+            },
             "created_at": now
         }).execute()
         
@@ -402,7 +408,7 @@ def run_scan():
         logger.info(msg)
         logger.info(f"Next trading day will be: {next_day}")
         
-        # Save this status to Supabase holiday_logs table
+        # Save this status to Supabase holiday_logs and market_context
         try:
             supabase = get_supabase_client()
             now = datetime.now(timezone.utc).isoformat()
@@ -411,7 +417,20 @@ def run_scan():
                 "reason": reason,
                 "created_at": now
             }).execute()
-            logger.info(f"Successfully logged sleep status to holiday_logs for {reason}")
+            
+            # Unified status in market_context for frontend
+            supabase.table('market_context').insert({
+                "context_data": {
+                    "scan_type": "HOLIDAY",
+                    "reason": reason,
+                    "stocks_scanned": 0,
+                    "trades_staged": 0,
+                    "trades_killed": 0
+                },
+                "created_at": now
+            }).execute()
+            
+            logger.info(f"Successfully logged sleep status for {reason}")
         except Exception as e:
             logger.error(f"Failed to log sleep status to DB: {e}")
             
@@ -423,7 +442,7 @@ def run_scan():
     top_20 = score_nifty_500(per_stock_sentiment)
     trades = query_openai(top_20, context)
     approved, killed = apply_kill_rules(trades, context)
-    save_to_database(approved, killed, context)
+    save_to_database(approved, killed, context, stocks_scanned=len(KNOWN_SYMBOLS))
     stage_orders(approved)
     
     logger.info("=== PRE-MARKET SCAN COMPLETE ===")

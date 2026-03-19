@@ -64,38 +64,58 @@ async def get_trades_history():
 
 @app.get("/agent/status")
 async def get_agent_status():
-    """Returns last pre_market_scan.py run time, how many trades were staged, and VIX + SGX Nifty values from that run"""
+    """Returns last pre_market_scan.py run time, how many trades were staged, and scan details"""
     try:
         supabase = get_db()
+        # Fetch the latest record from market_context
         mc_response = supabase.table('market_context').select('*').order('created_at', desc=True).limit(1).execute()
-        
-        last_run_time = None
-        vix = None
-        sgx_nifty = None
-        staged_count = 0
         
         if mc_response.data:
             latest = mc_response.data[0]
             last_run_time = latest.get('created_at')
             context_data = latest.get('context_data', {})
+            
+            # Extract new fields from context_data
+            stocks_scanned = context_data.get('stocks_scanned', 0)
+            trades_staged = context_data.get('trades_staged', 0)
+            trades_killed = context_data.get('trades_killed', 0)
+            scan_type = context_data.get('scan_type', 'LIVE')
             vix = context_data.get('vix')
             sgx_nifty = context_data.get('sgx_nifty_value')
             
-            if last_run_time:
+            # Fallback for older records that might not have these fields yet
+            if not stocks_scanned and last_run_time:
+                # If it's an old record, try to calculate staged_count like before
                 date_part = last_run_time.split('T')[0]
                 trades_resp = supabase.table('trades').select('*', count='exact').gte('created_at', date_part).eq('status', 'APPROVED').execute()
-                staged_count = trades_resp.count if trades_resp.count is not None else len(trades_resp.data)
+                trades_staged = trades_resp.count if trades_resp.count is not None else len(trades_resp.data)
+            
+            return {
+                "last_run_time": last_run_time,
+                "stocks_scanned": stocks_scanned,
+                "trades_staged": trades_staged,
+                "trades_killed": trades_killed,
+                "scan_type": scan_type,
+                "vix": vix,
+                "sgx_nifty": sgx_nifty
+            }
         
         return {
-            "last_run_time": last_run_time,
-            "staged_trades_count": staged_count,
-            "vix": vix,
-            "sgx_nifty": sgx_nifty
+            "last_run_time": None,
+            "stocks_scanned": 0,
+            "trades_staged": 0,
+            "trades_killed": 0,
+            "scan_type": "UNKNOWN",
+            "vix": None,
+            "sgx_nifty": None
         }
     except Exception as e:
         return handle_db_error(e, {
             "last_run_time": None,
-            "staged_trades_count": 0,
+            "stocks_scanned": 0,
+            "trades_staged": 0,
+            "trades_killed": 0,
+            "scan_type": "UNKNOWN",
             "vix": None,
             "sgx_nifty": None
         })

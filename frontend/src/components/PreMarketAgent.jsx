@@ -77,10 +77,35 @@ export default function PreMarketAgent() {
           </p>
         </div>
         <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-4 col-span-2">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Last Run Time</p>
-          <p className="text-white text-sm">
-            {status?.last_run_time ? new Date(status.last_run_time).toLocaleString() : 'Never'}
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-2 flex justify-between items-center">
+            <span>Last Run Details</span>
+            {status?.scan_type && (
+              <span className={`px-2 py-0.5 rounded text-[10px] ${status.scan_type === 'LIVE' ? 'bg-teal-500/20 text-teal-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                {status.scan_type} SCAN
+              </span>
+            )}
           </p>
+          <div className="space-y-2">
+            <p className="text-white text-sm font-medium">
+              {status?.last_run_time ? new Date(status.last_run_time).toLocaleString() : 'Never'}
+            </p>
+            {status?.last_run_time && (
+              <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-700/30">
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase">Scanned</p>
+                  <p className="text-sm text-teal-400 font-semibold">{status.stocks_scanned || 0}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase">Staged</p>
+                  <p className="text-sm text-green-400 font-semibold">{status.trades_staged || 0}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase">Killed</p>
+                  <p className="text-sm text-red-400 font-semibold">{status.trades_killed || 0}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

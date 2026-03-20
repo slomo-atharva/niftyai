@@ -591,6 +591,21 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
         
     return approved, killed, kill_summary
 
+def sanitize_confidence(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        mapping = {
+            'high': 0.8,
+            'very high': 0.9,
+            'moderate': 0.65,
+            'medium': 0.65,
+            'low': 0.4,
+            'very low': 0.3,
+        }
+        return mapping.get(value.lower().strip(), 0.65)
+    return 0.65
+
 def save_to_database(approved: list, killed: list, context: dict, stocks_scanned: int, gpt_prompt: str = None, kill_summary: str = None):
     """Step 6: Save to database"""
     logger.info("Saving results to database...")
@@ -604,6 +619,8 @@ def save_to_database(approved: list, killed: list, context: dict, stocks_scanned
             t_copy['status'] = 'APPROVED'
             t_copy['market_context'] = context
             t_copy['created_at'] = now
+            # Sanitize confidence before saving
+            t_copy['confidence'] = sanitize_confidence(t_copy.get('confidence', 0.65))
             all_trades.append(t_copy)
             
         for t in killed:
@@ -611,6 +628,8 @@ def save_to_database(approved: list, killed: list, context: dict, stocks_scanned
             t_copy['status'] = 'KILLED'
             t_copy['market_context'] = context
             t_copy['created_at'] = now
+            # Sanitize confidence before saving
+            t_copy['confidence'] = sanitize_confidence(t_copy.get('confidence', 0.65))
             all_trades.append(t_copy)
             
         if all_trades:

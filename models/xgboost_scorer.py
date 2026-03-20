@@ -226,7 +226,14 @@ def prepare_data(df: pd.DataFrame):
 
 def train_and_evaluate():
     df = load_data()
-    df = engineer_features(df)
+    
+    try:
+        df = engineer_features(df)
+    except Exception as e:
+        import traceback
+        print("EXACT ERROR IN XGBOOST FEATURE ENGINEERING:", traceback.format_exc())
+        raise e
+        
     df = create_target(df)
     
     X_train, y_train, X_val, y_val, X_test, y_test, features = prepare_data(df)

@@ -141,7 +141,10 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         # Raw features like delivery_pct are already present
         return g
     
-    df = df.groupby('symbol', group_keys=False).apply(process_group).reset_index(drop=True)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        df = df.groupby('symbol', group_keys=False).apply(process_group).reset_index(drop=True)
     return df
 
 def create_target(df: pd.DataFrame) -> pd.DataFrame:

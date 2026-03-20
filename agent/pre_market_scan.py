@@ -515,7 +515,7 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
     sgx = market_context.get('sgx_nifty_pct', 0.0)
     multiplier = market_context.get('position_multiplier', 1.0)
     
-    large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT", "HINDUNILVR", "WIPRO", "HCLTECH", "TATAMOTORS", "MARUTI"]
+    large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT", "HINDUNILVR", "WIPRO", "HCLTECH", "NTPC", "MARUTI"]
     
     for t in trades:
         try:
@@ -529,15 +529,16 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
             t['position_multiplier'] = multiplier
             
             # Determine RR threshold based on VIX regime
-            rr_threshold = 2.0
             if vix >= 25:
-                rr_threshold = 1.3
+                min_rr = 1.3
             elif vix >= 20:
-                rr_threshold = 1.5
+                min_rr = 1.5
+            else:
+                min_rr = 2.0
             
             reason = None
-            if rr < rr_threshold:
-                reason = f"R:R ratio {rr} is below {rr_threshold} (VIX: {vix})"
+            if rr < min_rr:
+                reason = f"R:R ratio {rr} is below {min_rr} (VIX: {vix})"
             elif sgx < -1.0 and signal == "BUY":
                 reason = f"SGX Nifty {sgx}% < -1% for BUY trade"
             elif 20 <= vix < 25 and symbol not in large_caps:
@@ -721,7 +722,7 @@ def run_scan():
     vix = context.get('vix', 0.0)
     symbols_to_score = None
     if 20 <= vix < 25:
-        large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT", "HINDUNILVR", "WIPRO", "HCLTECH", "TATAMOTORS", "MARUTI"]
+        large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT", "HINDUNILVR", "WIPRO", "HCLTECH", "NTPC", "MARUTI"]
         symbols_to_score = [s for s in KNOWN_SYMBOLS if s in large_caps]
         logger.info(f"VIX is {vix} (High Volatility). Restricting universe to {len(symbols_to_score)} large caps.")
     

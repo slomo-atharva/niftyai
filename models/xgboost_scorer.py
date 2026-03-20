@@ -62,30 +62,26 @@ def load_data() -> pd.DataFrame:
         
         df = pd.DataFrame(all_rows)
         
-        # --- URGENT DEBUG & FIX ---
+        # --- URGENT FIX: NORMALIZE IMMEDIATELY ---
+        # 1. Column names to lowercase
+        df.columns = [c.lower() for c in df.columns]
+        
+        # 2. Normalize symbols (NSE:SYMBOL-EQ -> SYMBOL)
+        def normalize_symbol(s):
+            if not isinstance(s, str): return s
+            if ':' in s: s = s.split(':')[1]
+            s = s.replace('-EQ','').replace('-BE','')
+            return s.strip()
+            
+        if 'symbol' in df.columns:
+            df['symbol'] = df['symbol'].apply(normalize_symbol)
+            
         print(f"XGBoost Debug - Loaded {len(df)} rows")
         print(f"XGBoost Debug - Columns: {df.columns.tolist()}")
         if not df.empty:
             print(f"XGBoost Debug - First row: {df.iloc[0].to_dict()}")
-        
-        # Normalize columns to lowercase to ensure consistency (handles 'Symbol' vs 'symbol')
-        df.columns = [c.lower() for c in df.columns]
-        
-        def normalize_symbol(symbol):
-            # Convert 'NSE:BAJFINANCE-EQ' to 'BAJFINANCE'
-            if ':' in symbol:
-                symbol = symbol.split(':')[1]
-            if '-EQ' in symbol:
-                symbol = symbol.replace('-EQ', '')
-            if '-BE' in symbol:
-                symbol = symbol.replace('-BE', '')
-            return symbol.strip()
-
-        if 'symbol' in df.columns:
-            df['symbol'] = df['symbol'].apply(normalize_symbol)
-        
-        print(f"XGBoost Debug - Sample symbols: {df['symbol'].unique()[:5] if 'symbol' in df.columns else 'SYMBOL COL MISSING'}")
-        # -------------------------
+            print(f"XGBoost Debug - Sample symbols: {df['symbol'].unique()[:5]}")
+        # -----------------------------------------
 
         df['date'] = pd.to_datetime(df['date'])
         

@@ -528,9 +528,16 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
             # Attach position multiplier to the trade
             t['position_multiplier'] = multiplier
             
+            # Determine RR threshold based on VIX regime
+            rr_threshold = 2.0
+            if vix >= 25:
+                rr_threshold = 1.3
+            elif vix >= 20:
+                rr_threshold = 1.5
+            
             reason = None
-            if rr < 2.0:
-                reason = f"R:R ratio {rr} is below 2.0"
+            if rr < rr_threshold:
+                reason = f"R:R ratio {rr} is below {rr_threshold} (VIX: {vix})"
             elif sgx < -1.0 and signal == "BUY":
                 reason = f"SGX Nifty {sgx}% < -1% for BUY trade"
             elif 20 <= vix < 25 and symbol not in large_caps:

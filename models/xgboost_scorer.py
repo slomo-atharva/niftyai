@@ -61,6 +61,19 @@ def load_data() -> pd.DataFrame:
             return pd.DataFrame()
         
         df = pd.DataFrame(all_rows)
+        
+        # --- URGENT DEBUG & FIX ---
+        print(f"XGBoost Debug - Loaded {len(df)} rows")
+        print(f"XGBoost Debug - Columns: {df.columns.tolist()}")
+        if not df.empty:
+            print(f"XGBoost Debug - First row: {df.iloc[0].to_dict()}")
+        
+        # Normalise columns to lowercase to ensure consistency (handles 'Symbol' vs 'symbol')
+        df.columns = [c.lower() for c in df.columns]
+        
+        print(f"XGBoost Debug - Sample symbols: {df['symbol'].unique()[:5] if 'symbol' in df.columns else 'SYMBOL COL MISSING'}")
+        # -------------------------
+
         df['date'] = pd.to_datetime(df['date'])
         
         # If delivery_pct doesn't exist or is mostly null, fill with 0

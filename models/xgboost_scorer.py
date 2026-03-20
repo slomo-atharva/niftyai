@@ -3,9 +3,9 @@ import logging
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-from sqlalchemy import create_engine
 import joblib
 from dotenv import load_dotenv
+from supabase import create_client
 from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 # Setup logging
@@ -14,24 +14,53 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL is not set in .env")
 
-# SQLAlchemy Engine
-engine = create_engine(DATABASE_URL)
+
+def get_supabase_client():
+    """Return a supabase-py REST client using HTTPS (port 443)."""
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_KEY", "")
+    if not url or not key:
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+    return create_client(url, key)
 
 def load_data() -> pd.DataFrame:
-    """Loads daily prices from Supabase"""
-    logger.info("Loading data from database...")
-    query = """
-    SELECT symbol, date, open, high, low, close, volume, 
-           delivery_pct
-    FROM daily_prices
-    ORDER BY symbol, date
+    """Loads daily prices from Supabase via REST API (HTTPS port 443).
+    
+    Uses paginated supabase-py queries instead of direct SQLAlchemy connection
+    so this works on GitHub Actions where PostgreSQL port 5432 is blocked.
     """
+    logger.info("Loading daily_prices from Supabase REST API...")
     try:
-        df = pd.read_sql(query, engine)
+        supabase = get_supabase_client()
+        
+        all_rows = []
+        page_size = 1000
+        offset = 0
+        
+        while True:
+            response = (
+                supabase.table('daily_prices')
+                .select('symbol, date, open, high, low, close, volume, delivery_pct')
+                .order('symbol')
+                .order('date')
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = response.data
+            if not batch:
+                break
+            all_rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+            logger.info(f"Fetched {len(all_rows)} rows so far...")
+        
+        if not all_rows:
+            logger.warning("No data returned from daily_prices table.")
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(all_rows)
         df['date'] = pd.to_datetime(df['date'])
         
         # If delivery_pct doesn't exist or is mostly null, fill with 0
@@ -41,10 +70,10 @@ def load_data() -> pd.DataFrame:
         else:
             df['delivery_pct'] = df['delivery_pct'].fillna(0.0)
             
-        logger.info(f"Loaded {len(df)} rows of data")
+        logger.info(f"Loaded {len(df)} rows of daily_prices data")
         return df
     except Exception as e:
-        logger.error(f"Failed to load data: {e}")
+        logger.error(f"Failed to load data from Supabase: {e}")
         raise
 
 def compute_rsi(data: pd.Series, window: int = 14) -> pd.Series:

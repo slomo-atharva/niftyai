@@ -312,6 +312,43 @@ def score_nifty_500(per_stock_sentiment: dict, symbols: list = None) -> list:
     logger.info(f"Top 20 stocks identified: {[x['symbol'] for x in top_20]}")
     return top_20
 
+
+def fetch_live_prices(stocks: list) -> list:
+    """Fetch live price for each stock via yfinance and attach to the stock dict.
+    
+    Uses fast_info['last_price'] which is the most recent trade price.
+    Falls back to history period='1d' close if fast_info is unavailable.
+    
+    Args:
+        stocks: List of stock dicts with 'symbol' key (NSE symbols without .NS suffix)
+    
+    Returns:
+        Same list with 'live_price' key added to each dict.
+    """
+    logger.info("Fetching live prices for top stocks via yfinance...")
+    for stock in stocks:
+        symbol = stock.get('symbol', '')
+        live_price = None
+        try:
+            ticker = yf.Ticker(f"{symbol}.NS")
+            # fast_info is the quickest way — single lightweight API call
+            live_price = ticker.fast_info.get('last_price') or ticker.fast_info.get('lastPrice')
+            if not live_price:
+                # Fallback: use last close from 1d history
+                hist = ticker.history(period="1d")
+                if not hist.empty:
+                    live_price = float(hist['Close'].iloc[-1])
+        except Exception as e:
+            logger.warning(f"Could not fetch live price for {symbol}: {e}")
+        
+        stock['live_price'] = round(float(live_price), 2) if live_price else None
+        if live_price:
+            logger.info(f"{symbol}: live price = ₹{stock['live_price']}")
+        else:
+            logger.warning(f"{symbol}: live price unavailable, GPT-4o will estimate")
+    
+    return stocks
+
 def generate_holiday_watchlist(top_20: list):
     """Step 4b: Generate a watchlist for the next session on holidays"""
     logger.info("Generating next session watchlist for holiday...")
@@ -388,9 +425,21 @@ def query_openai(top_20: list, market_context: dict) -> tuple[list, str]:
         
         vix_instruction = market_context.get('vix_instruction', "Select best intraday and swing trades normally.")
         
+        # Build live price context string for each stock
+        live_price_lines = []
+        for s in top_20:
+            lp = s.get('live_price')
+            if lp:
+                live_price_lines.append(f"  - {s['symbol']}: ₹{lp}")
+        live_price_context = (
+            "LIVE PRICES (fetched right now via yfinance):\n" + "\n".join(live_price_lines)
+            if live_price_lines else ""
+        )
+        
         prompt = (
             f"Market Context: {json.dumps(market_context)}\n"
             f"Top 20 Stocks: {json.dumps(top_20)}\n"
+            f"{live_price_context}\n"
         )
         
         system_content = (
@@ -398,6 +447,10 @@ def query_openai(top_20: list, market_context: dict) -> tuple[list, str]:
             f"VOLATILITY RULE: {vix_instruction} "
             "For each trade return JSON with these fields: symbol, signal (BUY or SELL), entry, sl, t1, t2, t3, rr_ratio, confidence, reasoning, trade_type (INTRADAY or SWING). "
             "Apply these rules: minimum R:R 1:2, no BUY trades if SGX Nifty below -1%. "
+            "CRITICAL PRICE RULE: Each stock in the list has a 'live_price' field showing its CURRENT market price fetched right now. "
+            "Your entry price for each trade MUST be within 1% of the stock's live_price. "
+            "Do NOT suggest entries far from the current market price — this causes stale trade errors. "
+            "Example: if live_price is ₹3420, your entry must be between ₹3386 and ₹3454. "
             "IMPORTANT: You MUST return a JSON list of at least 3 high conviction trades. If you cannot find good BUY trades due to market conditions, look for high-conviction SELL/SHORT opportunities on the provided list. "
             "For SWING trades (3-7 days holding), include a 'holding_period' field. Return JSON array only, no other text."
         )
@@ -491,12 +544,16 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
             else:
                 try:
                     ticker = yf.Ticker(symbol + ".NS")
-                    hist = ticker.history(period="1d")
-                    if not hist.empty:
-                        last_price = float(hist['Close'].iloc[-1])
-                        move_pct = abs(last_price - entry) / entry
-                        if move_pct > 0.02:
-                            reason = f"Stock moved {round(move_pct*100, 2)}% from entry (>{2}%)"
+                    # Use live_price already attached to the trade if available, else fetch
+                    live_price = t.get('live_price')
+                    if not live_price:
+                        hist = ticker.history(period="1d")
+                        if not hist.empty:
+                            live_price = float(hist['Close'].iloc[-1])
+                    if live_price:
+                        move_pct = abs(live_price - entry) / entry
+                        if move_pct > 0.01:
+                            reason = f"Stock moved {round(move_pct*100, 2)}% from entry (>1% — entry is stale vs live price ₹{live_price})"
                 except Exception as e:
                     logger.warning(f"Could not check price for {symbol}: {e}")
             
@@ -657,6 +714,9 @@ def run_scan():
         logger.info(f"VIX is {vix} (High Volatility). Restricting universe to {len(symbols_to_score)} large caps.")
     
     top_20 = score_nifty_500(per_stock_sentiment, symbols=symbols_to_score)
+    
+    update_scan_progress("Fetching live prices for top stocks...", 60)
+    top_20 = fetch_live_prices(top_20)
     
     trades, prompt = query_openai(top_20, context)
     

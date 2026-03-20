@@ -86,7 +86,7 @@ export default function PreMarketAgent() {
         <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-4">
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SGX Nifty</p>
           <p className={`text-2xl font-light ${status?.sgx_nifty < -1 ? 'text-red-400' : 'text-white'}`}>
-            {status?.sgx_nifty ? `${status.sgx_nifty.toFixed(2)}%` : '--'}
+            {status?.sgx_nifty ? status.sgx_nifty.toFixed(2) : '--'}
           </p>
         </div>
         <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-4 col-span-2">

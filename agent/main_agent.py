@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import joblib
+import numpy as np
 import pandas as pd
 from transformers import pipeline
 import warnings
@@ -67,10 +68,17 @@ def get_xgboost_scores(symbols: list) -> dict:
             stock_df = stock_df.ffill().fillna(0)
             last_row = stock_df.iloc[-1:][features]
             
+            # --- Debug logging ---
+            nan_count = last_row.isna().sum().sum()
+            logger.info(f"XGBoost: {symbol} feature shape={last_row.shape}, NaN count={nan_count}")
+            
+            # Critical fix: replace Inf and any remaining NaN with 0
+            last_row = last_row.replace([np.inf, -np.inf], 0).fillna(0)
+            
             # XGBoost predict_proba (class 1 = next-day close > +1.5%)
             proba = model.predict_proba(last_row)[0][1]
             scores[symbol] = float(proba)
-            logger.info(f"XGBoost: {symbol} ({fyers_sym}) → score={proba:.4f}")
+            logger.info(f"XGBoost: {symbol} ({fyers_sym}) → raw_proba={proba:.4f}, score={float(proba):.4f}")
             
         except Exception as e:
             logger.error(f"XGBoost: Error scoring {symbol}: {e} — defaulting to 0.5")

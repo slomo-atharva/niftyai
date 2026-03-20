@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 from datetime import datetime, timezone
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -154,28 +155,50 @@ async def get_signals():
 async def run_agent(background_tasks: BackgroundTasks):
     """Manually triggers pre_market_scan.py immediately"""
     def task():
+        progress_file = "/tmp/scan_progress.json"
         try:
+            # Initialize progress
+            with open(progress_file, 'w') as f:
+                json.dump({"status": "Initializing agent...", "percent": 0, "timestamp": datetime.now(timezone.utc).isoformat()}, f)
+            
             # Use absolute path for reliability
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             script_path = os.path.join(base_dir, "agent", "pre_market_scan.py")
             
-            print(f"Executing agent at: {script_path}")
+            print(f"Executing agent at: {script_path} using {sys.executable}")
+            # Use Popen or run with explicit env if needed, but run is fine for background task
             result = subprocess.run(
                 [sys.executable, script_path, "--run-now"],
-                capture_output=True,
-                text=True,
                 cwd=base_dir # Run from project root
             )
+            
             if result.returncode != 0:
                 print(f"Agent failed with exit code {result.returncode}")
-                print(f"Stderr: {result.stderr}")
+                with open(progress_file, 'w') as f:
+                    json.dump({"status": f"Failed with exit code {result.returncode}", "percent": 100, "error": True}, f)
             else:
                 print("Agent executed successfully")
+
         except Exception as e:
             print(f"Error triggering agent: {e}")
+            with open(progress_file, 'w') as f:
+                json.dump({"status": f"Error: {str(e)}", "percent": 100, "error": True}, f)
     
     background_tasks.add_task(task)
     return {"status": "Agent execution started"}
+
+@app.get("/agent/progress")
+async def get_agent_progress():
+    """Returns the current progress of the manually triggered scan"""
+    progress_file = "/tmp/scan_progress.json"
+    if not os.path.exists(progress_file):
+        return {"status": "No active scan", "percent": 0}
+    try:
+        with open(progress_file, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        return {"status": f"Error reading progress: {e}", "percent": 0}
+
 
 @app.get("/agent/debug")
 async def get_agent_debug():

@@ -22,6 +22,16 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+PROGRESS_FILE = "/tmp/scan_progress.json"
+
+def update_scan_progress(status: str, percent: int):
+    """Update progress for the backend to poll."""
+    try:
+        with open(PROGRESS_FILE, 'w') as f:
+            json.dump({"status": status, "percent": percent, "timestamp": datetime.now(timezone.utc).isoformat()}, f)
+    except Exception as e:
+        logger.error(f"Failed to update progress file: {e}")
+
 
 def log_error_to_db(step: str, error_message: str):
     """Log errors to database without crashing"""
@@ -253,10 +263,11 @@ def run_news_scraper() -> dict:
     
     return per_stock_sentiment
 
-def score_nifty_500(per_stock_sentiment: dict) -> list:
-    """Step 3: Score all Nifty 500 stocks"""
-    logger.info("Scoring Nifty 500 stocks...")
-    symbols = KNOWN_SYMBOLS
+def score_nifty_500(per_stock_sentiment: dict, symbols: list = None) -> list:
+    """Step 3: Score Nifty stocks. If symbols is None, uses all KNOWN_SYMBOLS."""
+    logger.info("Scoring stocks...")
+    if symbols is None:
+        symbols = KNOWN_SYMBOLS
     
     xgb_scores = {}
     try:
@@ -291,6 +302,12 @@ def score_nifty_500(per_stock_sentiment: dict) -> list:
     
     # Sort and get top 20
     combined_scores.sort(key=lambda x: x['combined_score'], reverse=True)
+    
+    print(f"\n--- TOP 10 STOCKS SENT TO GPT-4o ---")
+    for s in combined_scores[:10]:
+        print(f"{s['symbol']}: Score {s['combined_score']} (XGB: {s['xgb_score']}, Mom: {s['mom_score']}, Fin: {s['finbert_score']})")
+    print("------------------------------------\n")
+
     top_20 = combined_scores[:20]
     logger.info(f"Top 20 stocks identified: {[x['symbol'] for x in top_20]}")
     return top_20
@@ -363,6 +380,7 @@ def generate_holiday_watchlist(top_20: list):
 
 def query_openai(top_20: list, market_context: dict) -> tuple[list, str]:
     """Step 4: Send top 20 to OpenAI API. Returns (trades, prompt)"""
+    update_scan_progress("Querying OpenAI for trade selection...", 70)
     logger.info("Querying OpenAI API...")
     trades = []
     try:
@@ -380,6 +398,7 @@ def query_openai(top_20: list, market_context: dict) -> tuple[list, str]:
             f"VOLATILITY RULE: {vix_instruction} "
             "For each trade return JSON with these fields: symbol, signal (BUY or SELL), entry, sl, t1, t2, t3, rr_ratio, confidence, reasoning, trade_type (INTRADAY or SWING). "
             "Apply these rules: minimum R:R 1:2, no BUY trades if SGX Nifty below -1%. "
+            "IMPORTANT: You MUST return a JSON list of at least 3 high conviction trades. If you cannot find good BUY trades due to market conditions, look for high-conviction SELL/SHORT opportunities on the provided list. "
             "For SWING trades (3-7 days holding), include a 'holding_period' field. Return JSON array only, no other text."
         )
         
@@ -396,14 +415,26 @@ def query_openai(top_20: list, market_context: dict) -> tuple[list, str]:
         # We need to extract the array, as OpenAI might return a json object with trades array
         text_resp = response.choices[0].message.content.strip()
         
+        print(f"\n--- GPT-4o RAW PROMPT ---")
+        print(system_content + "\n\n" + prompt)
+        print("--------------------------\n")
+        
+        print(f"\n--- GPT-4o RAW RESPONSE ---")
+        print(text_resp)
+        print("----------------------------\n")
+        
         try:
             parsed = json.loads(text_resp)
             if isinstance(parsed, dict):
-                # E.g. {"trades": [...]}
-                for key, val in parsed.items():
-                    if isinstance(val, list):
-                        trades = val
-                        break
+                # Check if it's a single trade object directly
+                if 'symbol' in parsed and 'signal' in parsed:
+                    trades = [parsed]
+                else:
+                    # Look for a list in any key (e.g. {"trades": [...]})
+                    for key, val in parsed.items():
+                        if isinstance(val, list):
+                            trades = val
+                            break
             elif isinstance(parsed, list):
                 trades = parsed
             else:
@@ -513,6 +544,10 @@ def save_to_database(approved: list, killed: list, context: dict, stocks_scanned
             all_trades.append(t_copy)
             
         if all_trades:
+            # Remove keys that might not exist in the database schema
+            for t in all_trades:
+                t.pop('kill_reason', None)
+            
             supabase.table('trades').insert(all_trades).execute()
             logger.info("Successfully saved trades to Supabase.")
             
@@ -559,6 +594,7 @@ def stage_orders(approved: list):
             log_error_to_db("stage_orders", msg)
 
 def run_scan():
+    update_scan_progress("Starting pre-market scan...", 5)
     logger.info("=== STARTING PRE-MARKET SCAN ===")
     
     # Step 1: Check holidays
@@ -604,12 +640,33 @@ def run_scan():
         logger.info("=== PRE-MARKET SCAN COMPLETE (HOLIDAY) ===")
         return
     
+    update_scan_progress("Fetching market context (VIX, SGX Nifty)...", 10)
     context = fetch_market_context()
+    
+    update_scan_progress("Running news scraper and sentiment analysis...", 20)
     per_stock_sentiment = run_news_scraper()
-    top_20 = score_nifty_500(per_stock_sentiment)
+    
+    update_scan_progress("Scoring Nifty 500 stocks...", 40)
+    
+    # Bug Fix: If VIX is high (20-25), we MUST only send the 15 large caps requested in the prompt.
+    vix = context.get('vix', 0.0)
+    symbols_to_score = None
+    if 20 <= vix < 25:
+        large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT", "HINDUNILVR", "WIPRO", "HCLTECH", "TATAMOTORS", "MARUTI"]
+        symbols_to_score = [s for s in KNOWN_SYMBOLS if s in large_caps]
+        logger.info(f"VIX is {vix} (High Volatility). Restricting universe to {len(symbols_to_score)} large caps.")
+    
+    top_20 = score_nifty_500(per_stock_sentiment, symbols=symbols_to_score)
+    
     trades, prompt = query_openai(top_20, context)
+    
+    update_scan_progress("Applying kill rules and risk management...", 85)
     approved, killed, kill_summary = apply_kill_rules(trades, context)
+    
+    update_scan_progress("Saving results to database...", 95)
     save_to_database(approved, killed, context, stocks_scanned=len(KNOWN_SYMBOLS), gpt_prompt=prompt, kill_summary=kill_summary)
+    
+    update_scan_progress("Scan complete.", 100)
     stage_orders(approved)
     
     logger.info("=== PRE-MARKET SCAN COMPLETE ===")

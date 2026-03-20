@@ -128,15 +128,15 @@ export default function StockAI() {
           <p>{error}</p>
         </div>
       ) : trades.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 text-center bg-gray-800/30 rounded-lg border border-gray-800 border-dashed">
-          <TrendingUp className="text-gray-500 mb-2" size={32} />
-          <p className="text-gray-400 font-medium">
+        <div className="flex flex-col items-center justify-center p-10 text-center bg-gray-800/30 rounded-lg border border-gray-800 border-dashed transition-all">
+          <TrendingUp className="text-blue-500/50 mb-4 animate-pulse" size={48} />
+          <h3 className="text-white font-bold text-lg mb-2">
             {agentStatus?.vix_message || "No Trades Today"}
-          </p>
-          <p className="text-gray-500 text-sm mt-1">
-            {agentStatus?.vix > 30 
-              ? "Intraday trading paused due to extreme volatility." 
-              : "Market may be closed or AI kill rules were triggered."}
+          </h3>
+          <p className="text-gray-400 text-sm max-w-sm">
+            {agentStatus?.vix_message 
+              ? "The AI agent has completed its scan. However, due to current market conditions, no high-conviction trades were approved." 
+              : "Market may be closed or the pre-market scan hasn't run yet. Please check back later."}
           </p>
         </div>
       ) : (

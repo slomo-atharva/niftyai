@@ -119,7 +119,21 @@ def get_vix_regime(vix: float) -> dict:
         return {
             "name": "High Volatility Mode",
             "multiplier": 0.50,
-            "instruction": f"Market is highly volatile VIX at {vix}. Only recommend highest conviction trades. Wider stop losses. Prefer large cap stocks only — RELIANCE, HDFC, INFY, TCS, ICICIBANK, SBIN. No mid or small cap trades.",
+            "instruction": (
+                f"VIX is at {vix} indicating high volatility. This does NOT mean avoid trading — it means trade smarter. "
+                "You MUST recommend between 3 to 5 trades. Focus only on these large cap stocks: "
+                "RELIANCE, HDFCBANK, INFY, TCS, ICICIBANK, SBIN, BAJFINANCE, KOTAKBANK, AXISBANK, LT, "
+                "HINDUNILVR, WIPRO, HCLTECH, TATAMOTORS, MARUTI. "
+                "Rules for high volatility: "
+                "- Entry must be near strong support level "
+                "- Stop loss wider than normal — 1.5x ATR "
+                "- Target 1 conservative — 1% move minimum "
+                "- Prefer stocks showing relative strength vs Nifty "
+                "- Both BUY and SELL trades allowed "
+                "- Tag each trade as INTRADAY or SWING "
+                "- Position size reduced to 50% of normal. "
+                "You must return between 3 and 5 trades as JSON. Returning 0 trades is not acceptable unless ALL stocks are showing extreme weakness."
+            ),
             "color": "amber"
         }
     elif 25 <= vix < 30:
@@ -417,7 +431,7 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
     sgx = market_context.get('sgx_nifty_pct', 0.0)
     multiplier = market_context.get('position_multiplier', 1.0)
     
-    large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN"]
+    large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT", "HINDUNILVR", "WIPRO", "HCLTECH", "TATAMOTORS", "MARUTI"]
     
     for t in trades:
         try:

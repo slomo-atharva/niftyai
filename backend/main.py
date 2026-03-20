@@ -154,11 +154,51 @@ async def get_signals():
 async def run_agent(background_tasks: BackgroundTasks):
     """Manually triggers pre_market_scan.py immediately"""
     def task():
-        script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "agent", "pre_market_scan.py")
-        subprocess.run([sys.executable, script_path, "--run-now"])
+        try:
+            # Use absolute path for reliability
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            script_path = os.path.join(base_dir, "agent", "pre_market_scan.py")
+            
+            print(f"Executing agent at: {script_path}")
+            result = subprocess.run(
+                [sys.executable, script_path, "--run-now"],
+                capture_output=True,
+                text=True,
+                cwd=base_dir # Run from project root
+            )
+            if result.returncode != 0:
+                print(f"Agent failed with exit code {result.returncode}")
+                print(f"Stderr: {result.stderr}")
+            else:
+                print("Agent executed successfully")
+        except Exception as e:
+            print(f"Error triggering agent: {e}")
     
     background_tasks.add_task(task)
     return {"status": "Agent execution started"}
+
+@app.get("/agent/debug")
+async def get_agent_debug():
+    """Returns debug info from the last scan: VIX, regime, kill reasons, and GPT prompt"""
+    try:
+        supabase = get_db()
+        mc_response = supabase.table('market_context').select('*').order('created_at', desc=True).limit(1).execute()
+        
+        if mc_response.data:
+            latest = mc_response.data[0]
+            context_data = latest.get('context_data', {})
+            
+            return {
+                "vix": context_data.get('vix'),
+                "vix_regime": context_data.get('vix_regime'),
+                "kill_summary": context_data.get('kill_summary', "No kill summary available."),
+                "gpt_prompt": context_data.get('gpt_prompt', "No prompt recorded."),
+                "created_at": latest.get('created_at')
+            }
+        
+        raise HTTPException(status_code=404, detail="No scan data found")
+    except Exception as e:
+        return handle_db_error(e, {"error": str(e)})
 
 @app.get("/watchlist")
 async def get_watchlist():

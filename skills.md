@@ -15,7 +15,12 @@ Never analyze stocks after 9:15 AM for intraday.
 
 ## Hard Rules
 - Minimum R:R 1:2 on every trade
-- Kill all trades if VIX > 20
+- VIX Regime Logic:
+    - VIX < 15: Normal Mode (Full position)
+    - 15-20: Cautious Mode (75% size, tighter SL)
+    - 20-25: High Volatility (50% size, Large Cap only)
+    - 25-30: Extreme Volatility (25% size, SELL/SHORT preferred)
+    - VIX > 30: Panic Mode (0% size, Swing trades only)
 - Kill all BUY trades if SGX Nifty < -1%
 - Never chase a stock that moved 2%+ from entry price
 - All intraday analysis must complete before 9:00 AM

@@ -361,8 +361,8 @@ def generate_holiday_watchlist(top_20: list):
     
     return watchlist
 
-def query_openai(top_20: list, market_context: dict) -> list:
-    """Step 4: Send top 20 to OpenAI API"""
+def query_openai(top_20: list, market_context: dict) -> tuple[list, str]:
+    """Step 4: Send top 20 to OpenAI API. Returns (trades, prompt)"""
     logger.info("Querying OpenAI API...")
     trades = []
     try:
@@ -419,7 +419,7 @@ def query_openai(top_20: list, market_context: dict) -> list:
         logger.error(msg)
         log_error_to_db("query_openai_api", msg)
     
-    return trades
+    return trades, system_content + "\n\n" + prompt
 
 def apply_kill_rules(trades: list, market_context: dict) -> tuple:
     """Step 5: Apply kill rules programmatically"""
@@ -482,9 +482,15 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
             t['kill_reason'] = f"Error processing: {e}"
             killed.append(t)
             
-    return approved, killed
+    kill_summary = ""
+    if killed:
+        kill_summary = "\n".join([f"{t.get('symbol')}: {t.get('kill_reason')}" for t in killed])
+    else:
+        kill_summary = "All suggested trades approved."
+        
+    return approved, killed, kill_summary
 
-def save_to_database(approved: list, killed: list, context: dict, stocks_scanned: int):
+def save_to_database(approved: list, killed: list, context: dict, stocks_scanned: int, gpt_prompt: str = None, kill_summary: str = None):
     """Step 6: Save to database"""
     logger.info("Saving results to database...")
     try:
@@ -517,7 +523,9 @@ def save_to_database(approved: list, killed: list, context: dict, stocks_scanned
                 "stocks_scanned": stocks_scanned,
                 "trades_staged": len(approved),
                 "trades_killed": len(killed),
-                "scan_type": "LIVE"
+                "scan_type": "LIVE",
+                "gpt_prompt": gpt_prompt,
+                "kill_summary": kill_summary
             },
             "created_at": now
         }).execute()
@@ -599,9 +607,9 @@ def run_scan():
     context = fetch_market_context()
     per_stock_sentiment = run_news_scraper()
     top_20 = score_nifty_500(per_stock_sentiment)
-    trades = query_openai(top_20, context)
-    approved, killed = apply_kill_rules(trades, context)
-    save_to_database(approved, killed, context, stocks_scanned=len(KNOWN_SYMBOLS))
+    trades, prompt = query_openai(top_20, context)
+    approved, killed, kill_summary = apply_kill_rules(trades, context)
+    save_to_database(approved, killed, context, stocks_scanned=len(KNOWN_SYMBOLS), gpt_prompt=prompt, kill_summary=kill_summary)
     stage_orders(approved)
     
     logger.info("=== PRE-MARKET SCAN COMPLETE ===")

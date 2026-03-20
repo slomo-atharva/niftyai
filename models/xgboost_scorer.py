@@ -68,8 +68,21 @@ def load_data() -> pd.DataFrame:
         if not df.empty:
             print(f"XGBoost Debug - First row: {df.iloc[0].to_dict()}")
         
-        # Normalise columns to lowercase to ensure consistency (handles 'Symbol' vs 'symbol')
+        # Normalize columns to lowercase to ensure consistency (handles 'Symbol' vs 'symbol')
         df.columns = [c.lower() for c in df.columns]
+        
+        def normalize_symbol(symbol):
+            # Convert 'NSE:BAJFINANCE-EQ' to 'BAJFINANCE'
+            if ':' in symbol:
+                symbol = symbol.split(':')[1]
+            if '-EQ' in symbol:
+                symbol = symbol.replace('-EQ', '')
+            if '-BE' in symbol:
+                symbol = symbol.replace('-BE', '')
+            return symbol.strip()
+
+        if 'symbol' in df.columns:
+            df['symbol'] = df['symbol'].apply(normalize_symbol)
         
         print(f"XGBoost Debug - Sample symbols: {df['symbol'].unique()[:5] if 'symbol' in df.columns else 'SYMBOL COL MISSING'}")
         # -------------------------

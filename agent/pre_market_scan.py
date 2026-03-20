@@ -550,7 +550,12 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
                 reason = f"Panic Mode VIX {vix} - All intraday trades killed"
             else:
                 try:
-                    ticker = yf.Ticker(symbol + ".NS")
+                    # Fix 2 — Replace TATAMOTORS.NS with TATAMOTORS.BO
+                    ticker_symbol = symbol + ".NS"
+                    if symbol == "TATAMOTORS":
+                        ticker_symbol = "TATAMOTORS.BO"
+                    
+                    ticker = yf.Ticker(ticker_symbol)
                     # Use live_price already attached to the trade if available, else fetch
                     live_price = t.get('live_price')
                     if not live_price:

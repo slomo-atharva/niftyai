@@ -99,6 +99,44 @@ def get_next_trading_day(date_obj=None) -> str:
         logger.warning(f"Error fetching next trading day: {e}")
     return "UNKNOWN"
 
+def get_vix_regime(vix: float) -> dict:
+    """Returns regime name, position multiplier, and GPT instructions based on VIX."""
+    if vix < 15:
+        return {
+            "name": "Normal Trading Mode",
+            "multiplier": 1.0,
+            "instruction": "Market is calm. Select best intraday and swing trades normally.",
+            "color": "teal"
+        }
+    elif 15 <= vix < 20:
+        return {
+            "name": "Cautious Mode",
+            "multiplier": 0.75,
+            "instruction": "Market is slightly volatile. Prefer stocks with strong momentum and clear support levels. Tighter stop losses.",
+            "color": "blue"
+        }
+    elif 20 <= vix < 25:
+        return {
+            "name": "High Volatility Mode",
+            "multiplier": 0.50,
+            "instruction": f"Market is highly volatile VIX at {vix}. Only recommend highest conviction trades. Wider stop losses. Prefer large cap stocks only — RELIANCE, HDFC, INFY, TCS, ICICIBANK, SBIN. No mid or small cap trades.",
+            "color": "amber"
+        }
+    elif 25 <= vix < 30:
+        return {
+            "name": "Extreme Volatility Mode",
+            "multiplier": 0.25,
+            "instruction": f"VIX extremely high at {vix}. Only recommend SELL or SHORT trades on weak stocks. No BUY trades unless stock is showing exceptional strength vs market.",
+            "color": "orange"
+        }
+    else: # vix >= 30
+        return {
+            "name": "Panic Mode",
+            "multiplier": 0.0,
+            "instruction": "Market in panic mode. Only recommend swing trades with 7-10 day horizon for strong fundamentally sound stocks at support levels. These are buying opportunities for patient traders.",
+            "color": "red"
+        }
+
 def fetch_market_context() -> dict:
     """Step 1: Fetch market context"""
     logger.info("Fetching market context...")
@@ -147,16 +185,31 @@ def fetch_market_context() -> dict:
         context['crude_oil'] = 0.0
 
     try:
-        vix = yf.Ticker("^INDIAVIX").history(period="1d")
-        if not vix.empty:
-            context['vix'] = round(float(vix['Close'].iloc[-1]), 2)
+        vix_ticker = yf.Ticker("^INDIAVIX").history(period="1d")
+        if not vix_ticker.empty:
+            vix_val = round(float(vix_ticker['Close'].iloc[-1]), 2)
+            context['vix'] = vix_val
+            regime = get_vix_regime(vix_val)
+            context['vix_regime'] = regime['name']
+            context['vix_instruction'] = regime['instruction']
+            context['position_multiplier'] = regime['multiplier']
+            context['vix_color'] = regime['color']
+            
+            if vix_val >= 30:
+                context['vix_message'] = f"Panic Mode — VIX {vix_val} — Intraday trades killed. Showing swing opportunities only."
+            elif vix_val >= 15:
+                context['vix_message'] = f"{regime['name']} — VIX {vix_val} — Showing reduced position size recommendations"
+            else:
+                context['vix_message'] = f"Normal Trading Mode — VIX {vix_val}"
         else:
             context['vix'] = 0.0
+            context['vix_regime'] = "Unknown"
     except Exception as e:
         msg = f"Error fetching VIX: {e}"
         logger.error(msg)
         log_error_to_db("market_context - vix", msg)
         context['vix'] = 0.0
+        context['vix_regime'] = "Unknown"
 
     logger.info(f"Market context: {context}")
     return context
@@ -301,15 +354,25 @@ def query_openai(top_20: list, market_context: dict) -> list:
     try:
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
+        vix_instruction = market_context.get('vix_instruction', "Select best intraday and swing trades normally.")
+        
         prompt = (
             f"Market Context: {json.dumps(market_context)}\n"
             f"Top 20 Stocks: {json.dumps(top_20)}\n"
         )
         
+        system_content = (
+            "You are an expert NSE/BSE trader. Select maximum 6 high conviction trades from this list. "
+            f"VOLATILITY RULE: {vix_instruction} "
+            "For each trade return JSON with these fields: symbol, signal (BUY or SELL), entry, sl, t1, t2, t3, rr_ratio, confidence, reasoning, trade_type (INTRADAY or SWING). "
+            "Apply these rules: minimum R:R 1:2, no BUY trades if SGX Nifty below -1%. "
+            "For SWING trades (3-7 days holding), include a 'holding_period' field. Return JSON array only, no other text."
+        )
+        
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are an expert NSE/BSE trader. Select maximum 6 high conviction trades from this list. For each trade return JSON with these fields: symbol, signal (BUY or SELL), entry, sl, t1, t2, t3, rr_ratio, confidence, reasoning, trade_type (INTRADAY or SWING). Apply these rules: minimum R:R 1:2, no trades if VIX above 20, no BUY trades if SGX Nifty below -1%. For SWING trades (3-7 days holding), include a 'holding_period' field. Return JSON array only, no other text."},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt}
             ],
             response_format={"type": "json_object"},
@@ -352,6 +415,9 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
     
     vix = market_context.get('vix', 0.0)
     sgx = market_context.get('sgx_nifty_pct', 0.0)
+    multiplier = market_context.get('position_multiplier', 1.0)
+    
+    large_caps = ["RELIANCE", "HDFCBANK", "INFY", "TCS", "ICICIBANK", "SBIN"]
     
     for t in trades:
         try:
@@ -359,14 +425,24 @@ def apply_kill_rules(trades: list, market_context: dict) -> tuple:
             signal = t.get('signal', '').upper()
             rr = float(t.get('rr_ratio', 0.0))
             entry = float(t.get('entry', 0.0))
+            trade_type = t.get('trade_type', 'INTRADAY').upper()
+            
+            # Attach position multiplier to the trade
+            t['position_multiplier'] = multiplier
             
             reason = None
             if rr < 2.0:
                 reason = f"R:R ratio {rr} is below 2.0"
-            elif vix > 20 and signal == "BUY":
-                reason = f"VIX {vix} > 20 for BUY trade"
             elif sgx < -1.0 and signal == "BUY":
                 reason = f"SGX Nifty {sgx}% < -1% for BUY trade"
+            elif 20 <= vix < 25 and symbol not in large_caps:
+                reason = f"High VIX {vix} - Large cap trades only"
+            elif 25 <= vix < 30 and signal == "BUY":
+                 # We rely on GPT to judge 'exceptional strength', but as a safety:
+                 if t.get('confidence', 0) < 0.9:
+                    reason = f"Extreme VIX {vix} - BUY trades restricted to exceptional strength"
+            elif vix >= 30 and trade_type == "INTRADAY":
+                reason = f"Panic Mode VIX {vix} - All intraday trades killed"
             else:
                 try:
                     ticker = yf.Ticker(symbol + ".NS")

@@ -92,6 +92,8 @@ async def get_agent_status():
             trades_killed = context_data.get('trades_killed', 0)
             scan_type = context_data.get('scan_type', 'LIVE')
             vix = context_data.get('vix')
+            vix_regime = context_data.get('vix_regime')
+            vix_message = context_data.get('vix_message')
             sgx_nifty = context_data.get('sgx_nifty_value')
             
             # Fallback for older records that might not have these fields yet
@@ -108,6 +110,8 @@ async def get_agent_status():
                 "trades_killed": trades_killed,
                 "scan_type": scan_type,
                 "vix": vix,
+                "vix_regime": vix_regime,
+                "vix_message": vix_message,
                 "sgx_nifty": sgx_nifty
             }
         
@@ -118,6 +122,8 @@ async def get_agent_status():
             "trades_killed": 0,
             "scan_type": "UNKNOWN",
             "vix": None,
+            "vix_regime": None,
+            "vix_message": None,
             "sgx_nifty": None
         }
     except Exception as e:
@@ -128,6 +134,8 @@ async def get_agent_status():
             "trades_killed": 0,
             "scan_type": "UNKNOWN",
             "vix": None,
+            "vix_regime": None,
+            "vix_message": None,
             "sgx_nifty": None
         })
 

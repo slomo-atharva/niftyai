@@ -66,9 +66,22 @@ export default function PreMarketAgent() {
       <div className="grid grid-cols-2 gap-4 mb-8 flex-grow">
         <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-4">
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-1 flex items-center gap-1"><Gauge size={12}/> VIX</p>
-          <p className={`text-2xl font-light ${status?.vix > 20 ? 'text-red-400' : 'text-white'}`}>
-            {status?.vix ? status.vix.toFixed(2) : '--'}
-          </p>
+          <div className="flex items-baseline gap-2">
+            <p className={`text-2xl font-light ${status?.vix > 20 ? 'text-red-400' : 'text-white'}`}>
+              {status?.vix ? status.vix.toFixed(2) : '--'}
+            </p>
+            {status?.vix_regime && (
+              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                status.vix < 15 ? 'bg-teal-500/20 text-teal-400' :
+                status.vix < 20 ? 'bg-blue-500/20 text-blue-400' :
+                status.vix < 25 ? 'bg-amber-500/20 text-amber-400' :
+                status.vix < 30 ? 'bg-orange-500/20 text-orange-400' :
+                'bg-red-500/20 text-red-400'
+              }`}>
+                {status.vix_regime.split(' ')[0]}
+              </span>
+            )}
+          </div>
         </div>
         <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-4">
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SGX Nifty</p>

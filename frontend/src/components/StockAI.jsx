@@ -10,6 +10,7 @@ const TradeCard = ({ trade, isSwing }) => {
   const t3 = trade.t3 || '-';
   const sl = trade.sl || trade.stop_loss || '-';
   const reasoning = trade.reasoning || trade.ai_reasoning || 'AI selected this trade based on technical indicators and pre-market data.';
+  const multiplier = trade.position_multiplier || 1.0;
 
   return (
     <div className="bg-gray-800/50 hover:bg-gray-800 border border-gray-700 rounded-lg p-4 transition shadow-sm mb-3">
@@ -17,9 +18,14 @@ const TradeCard = ({ trade, isSwing }) => {
         <div>
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             {trade.symbol} 
-            <span className={`px-2 py-0.5 rounded text-xs font-bold ${signal === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${signal === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
               {signal}
             </span>
+            {multiplier < 1.0 && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                {Math.round(multiplier * 100)}% SIZE
+              </span>
+            )}
           </h3>
           <p className="text-xs text-gray-400 mt-1 line-clamp-2" title={reasoning}>{reasoning}</p>
         </div>
@@ -67,21 +73,26 @@ const TradeCard = ({ trade, isSwing }) => {
 
 export default function StockAI() {
   const [trades, setTrades] = useState([]);
+  const [agentStatus, setAgentStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const fetchTodayTrades = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/trades/today`);
-        setTrades(response.data.trades || []);
+        const [tradesResp, statusResp] = await Promise.all([
+          axios.get(`${import.meta.env.VITE_API_URL}/trades/today`),
+          axios.get(`${import.meta.env.VITE_API_URL}/agent/status`)
+        ]);
+        setTrades(tradesResp.data.trades || []);
+        setAgentStatus(statusResp.data);
       } catch (err) {
-        setError("Failed to fetch today's trades");
+        setError("Failed to fetch data");
       } finally {
         setLoading(false);
       }
     };
-    fetchTodayTrades();
+    fetchData();
   }, []);
 
   if (loading) {
@@ -119,8 +130,14 @@ export default function StockAI() {
       ) : trades.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-8 text-center bg-gray-800/30 rounded-lg border border-gray-800 border-dashed">
           <TrendingUp className="text-gray-500 mb-2" size={32} />
-          <p className="text-gray-400 font-medium">No Trades Today</p>
-          <p className="text-gray-500 text-sm mt-1">Market may be closed or AI kill rules were triggered.</p>
+          <p className="text-gray-400 font-medium">
+            {agentStatus?.vix_message || "No Trades Today"}
+          </p>
+          <p className="text-gray-500 text-sm mt-1">
+            {agentStatus?.vix > 30 
+              ? "Intraday trading paused due to extreme volatility." 
+              : "Market may be closed or AI kill rules were triggered."}
+          </p>
         </div>
       ) : (
         <div className="space-y-6">

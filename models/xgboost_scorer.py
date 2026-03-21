@@ -291,3 +291,60 @@ def train_and_evaluate():
         
 if __name__ == "__main__":
     train_and_evaluate()
+
+class XGBoostScorer:
+    def __init__(self):
+        self.model = None
+        self.features = None
+        self.data_df = None
+        
+        try:
+            current_file_path = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(current_file_path, "saved", "xgboost_nifty.pkl")
+            if os.path.exists(model_path):
+                model_data = joblib.load(model_path)
+                self.model = model_data['model']
+                self.features = model_data['features']
+            else:
+                logger.warning(f"XGBoost model not found at {model_path}")
+                
+            df = load_data()
+            if not df.empty:
+                self.data_df = engineer_features(df)
+        except Exception as e:
+            logger.error(f"XGBoostScorer init failed: {e}")
+
+    def score(self, symbol: str):
+        return self.get_xgboost_score(symbol, self.data_df)
+
+    def get_xgboost_score(self, symbol: str, data: pd.DataFrame):
+        try:
+            if self.model is None:
+                print(f"XGBoost Debug - Model is None")
+                return None
+            if data is None or data.empty:
+                print(f"XGBoost Debug - Data is None or empty")
+                return None
+                
+            fyers_sym = f"NSE:{symbol.replace('.NS', '')}-EQ"
+            # Some versions of Supabase data might just use SYMBOL instead of NSE:SYMBOL-EQ
+            # Let's check both
+            stock_df = data[data['symbol'] == fyers_sym].copy()
+            if stock_df.empty:
+                stock_df = data[data['symbol'] == symbol.replace('.NS', '')].copy()
+            
+            if stock_df.empty:
+                print(f"XGBoost Debug - No data found in df for {fyers_sym} or {symbol}")
+                return None
+                
+            stock_df = stock_df.ffill().infer_objects(copy=False).fillna(0)
+            last_row = stock_df.iloc[-1:][self.features]
+            last_row = last_row.replace([np.inf, -np.inf], 0).fillna(0)
+            
+            return float(self.model.predict_proba(last_row)[0][1])
+        except Exception as e:
+            print(f"XGBoost failed for {symbol}: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+

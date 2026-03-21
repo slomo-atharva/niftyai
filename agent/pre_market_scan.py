@@ -269,28 +269,40 @@ def score_nifty_500(per_stock_sentiment: dict, symbols: list = None) -> list:
     if symbols is None:
         symbols = KNOWN_SYMBOLS
     
-    xgb_scores = {}
-    try:
-        xgb_scores = get_xgboost_scores(symbols)
-    except Exception as e:
-        msg = f"Error fetching XGBoost scores: {e}"
-        logger.error(msg)
-        log_error_to_db("score_nifty - xgboost", msg)
-
+    from models.technical_scorer import TechnicalScorer
+    from models.xgboost_scorer import XGBoostScorer
+    
+    technical_scorer = TechnicalScorer()
+    xgboost_scorer = XGBoostScorer()
+    
     momentum = MomentumScorer()
     combined_scores = []
     
     for sym in symbols:
         try:
-            xgb_val = float(xgb_scores.get(sym, 0.5))
+            tech_score = technical_scorer.score(sym)
+            xgb_score = xgboost_scorer.score(sym)
+            
+            if xgb_score is not None:
+                ml_score = (xgb_score * 0.6) + (tech_score * 0.4)
+                scorer_used = "XGBoost + Technical"
+                print(f"{sym}: Using XGBoost + Technical (XGB: {xgb_score:.3f}, Tech: {tech_score:.3f})")
+            else:
+                ml_score = tech_score
+                scorer_used = "Technical Only"
+                print(f"{sym}: XGBoost failed, using Technical only (Tech: {tech_score:.3f})")
+                
             mom_raw = float(momentum.get_score(sym + ".NS"))
             mom_norm = (mom_raw + 1) / 5.0 # normalize -1 to 4 to 0.0 to 1.0
             fin_val = float(per_stock_sentiment.get(sym, 0.5))
             
-            combined = (xgb_val * 0.60) + (mom_norm * 0.25) + (fin_val * 0.15)
+            combined = (ml_score * 0.60) + (mom_norm * 0.25) + (fin_val * 0.15)
             combined_scores.append({
                 "symbol": sym,
-                "xgb_score": round(xgb_val, 3),
+                "xgb_score": round(xgb_score, 3) if xgb_score is not None else None,
+                "tech_score": round(tech_score, 3),
+                "ml_score": round(ml_score, 3),
+                "scorer_used": scorer_used,
                 "mom_score": round(mom_norm, 3),
                 "finbert_score": round(fin_val, 3),
                 "combined_score": round(combined, 3)
@@ -303,9 +315,9 @@ def score_nifty_500(per_stock_sentiment: dict, symbols: list = None) -> list:
     # Sort and get top 20
     combined_scores.sort(key=lambda x: x['combined_score'], reverse=True)
     
-    print(f"\n--- TOP 10 STOCKS SENT TO GPT-4o ---")
+    print(f"\n--- TOP STOCKS SCORED ---")
     for s in combined_scores[:10]:
-        print(f"{s['symbol']}: Score {s['combined_score']} (XGB: {s['xgb_score']}, Mom: {s['mom_score']}, Fin: {s['finbert_score']})")
+        print(f"{s['symbol']}: Score {s['combined_score']} (ML: {s['ml_score']}, Scorer: {s['scorer_used']}, Mom: {s['mom_score']}, Fin: {s['finbert_score']})")
     print("------------------------------------\n")
 
     top_20 = combined_scores[:20]
@@ -771,7 +783,7 @@ if __name__ == "__main__":
     
     if args.dry_run_fast:
         global KNOWN_SYMBOLS
-        KNOWN_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK"]
+        KNOWN_SYMBOLS = ["RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "SBIN", "BAJFINANCE", "KOTAKBANK", "AXISBANK", "LT"]
         run_scan()
     elif args.run_now:
         run_scan()

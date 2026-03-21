@@ -329,6 +329,14 @@ class XGBoostScorer:
             fyers_sym = f"NSE:{symbol.replace('.NS', '')}-EQ"
             # Some versions of Supabase data might just use SYMBOL instead of NSE:SYMBOL-EQ
             # Let's check both
+            
+            # Reset index to make symbol a column again
+            if data.index.name == 'symbol':
+                data = data.reset_index()
+            elif 'symbol' not in data.columns:
+                print(f"Cannot find symbol column. Index: {data.index.name}, Columns: {data.columns.tolist()}")
+                return None
+                
             stock_df = data[data['symbol'] == fyers_sym].copy()
             if stock_df.empty:
                 stock_df = data[data['symbol'] == symbol.replace('.NS', '')].copy()

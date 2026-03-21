@@ -310,7 +310,7 @@ class XGBoostScorer:
                 
             df = load_data()
             if not df.empty:
-                self.data_df = engineer_features(df)
+                self.data_df = df
         except Exception as e:
             logger.error(f"XGBoostScorer init failed: {e}")
 
@@ -343,6 +343,12 @@ class XGBoostScorer:
             
             if stock_df.empty:
                 print(f"XGBoost Debug - No data found in df for {fyers_sym} or {symbol}")
+                return None
+                
+            # Now compute features only for this stock
+            stock_df = engineer_features(stock_df)
+            
+            if stock_df.empty:
                 return None
                 
             stock_df = stock_df.ffill().infer_objects(copy=False).fillna(0)
